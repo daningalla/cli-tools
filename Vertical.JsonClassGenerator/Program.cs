@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.Net;
+using System.Text.RegularExpressions;
 using Vertical.CommandLine;
 using Vertical.CommandLine.Configuration;
 using Vertical.JsonClassGenerator;
@@ -41,13 +42,23 @@ static async Task<Stream> GetInputStreamAsync(Options options)
 
     if (Regex.IsMatch(source, "^https?://"))
     {
-        using var httpClient = new HttpClient();
+        using var httpClient = new HttpClient(new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All
+        });
         foreach (var (key, value) in options.RequestHeaders)
         {
             httpClient.DefaultRequestHeaders.Add(key, value);
         }
-        var response = await httpClient.GetByteArrayAsync(source);
-        return new MemoryStream(response);
+        httpClient.DefaultRequestHeaders.Add("Accept", "*/*");
+        httpClient.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br");
+        httpClient.DefaultRequestHeaders.Add("Connection", "keep-alive");
+
+        var httpResponse = await httpClient.GetAsync(source);
+        var memoryStream = new MemoryStream();
+        await httpResponse.Content.CopyToAsync(memoryStream);
+        memoryStream.Position = 0;
+        return memoryStream;
     }
 
     return new FileStream(source, FileMode.Open);
